@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, g
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -11,6 +11,8 @@ import random
 options = uc.ChromeOptions()
 options.add_argument("--user-data-dir=profile")
 options.add_argument("--start-maximized")
+cooldown = {}
+cooldown["until"] = 0
 
 def create_profile():
     driver = uc.Chrome(options=options)
@@ -29,6 +31,16 @@ app = Flask(__name__)
 
 @app.route('/shopee', methods=['GET'])
 def shopee_scraper():
+    now = time.time()
+    cooldown_until = cooldown["until"]
+    print(now)
+    print(cooldown_until)
+
+    if now < cooldown_until:
+        retry_after = int(cooldown_until - now)
+        return (jsonify({'error': 'Rate limit, Try again later.', 'retry_after': retry_after}),429,
+            {'Retry-After': str(retry_after)}
+        )
     store_id = request.args.get('storeId')
     deal_id = request.args.get('dealId')
 
@@ -84,14 +96,16 @@ def shopee_scraper():
         elif message["method"] == "Network.responseReceived":
             capture_response(message["params"])
 
+    post_now = time.time()
+    cooldown["until"] = post_now + 30
     if network_log:
         print(f"Matched response from {network_log[0]['url']}")
         return jsonify(json.loads(network_log[0]["body"]))
     elif network_log and "90309999" in network_log[0]["body"]:
-        print("Check the browser, there may be a captcha, if not try again some time later.")
+        print("Check the browser, there may be a captcha")
     else:
         return jsonify({'error': 'No matching XHR response found'}), 404
-
+    
 if create_profile():
     options = uc.ChromeOptions()
     options.add_argument("--user-data-dir=profile")
