@@ -49,21 +49,17 @@ app = Flask(__name__)
 
 
 @app.route('/shopee', methods=['GET'])
-def shopee_scraper(store_id=None,deal_id=None,driver_error=None):    
+def shopee_scraper(store_id=None,deal_id=None,driver_error=None): 
     if driver_error:
         scraper = driver_error
     else:
-        try:
-            driver.title
-            scraper = driver
-        except:
-            options = uc.ChromeOptions()
-            options.add_argument("--user-data-dir=profile")
-            options.add_argument("--start-maximized")
-            options.set_capability(
-                "goog:loggingPrefs", {"performance": "ALL"}
-            )
-            scraper = uc.Chrome(options=options)
+        options = uc.ChromeOptions()
+        options.add_argument("--user-data-dir=profile")
+        options.add_argument("--start-maximized")
+        options.set_capability(
+            "goog:loggingPrefs", {"performance": "ALL"}
+        )
+        scraper = uc.Chrome(options=options)
     
     now = time.time()
     cooldown_until = cooldown["until"]
@@ -150,19 +146,15 @@ def shopee_scraper(store_id=None,deal_id=None,driver_error=None):
     cooldown["until"] = post_now + 30
     if network_log:
         print(f"Matched response from {network_log[0]['url']}")
+        scraper.quit()
         return jsonify(json.loads(network_log[0]["body"]))
     elif network_log and "90309999" in network_log[0]["body"]:
-        print("Check the browser, there may be a captcha")
+        scraper.quit()
+        return jsonify({'error': 'Check the browser, there may be a captcha, re request.'}), 404
     else:
+        scraper.quit()
         return jsonify({'error': 'No matching XHR response found'}), 404
     
 if create_profile():
-    options = uc.ChromeOptions()
-    options.add_argument("--user-data-dir=profile")
-    options.add_argument("--start-maximized")
-    options.set_capability(
-        "goog:loggingPrefs", {"performance": "ALL"}
-    )
-    driver = uc.Chrome(options=options)
     print("You can now request.")
     app.run()
