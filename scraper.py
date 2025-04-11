@@ -8,16 +8,34 @@ import json
 import time
 import random
 
-options = uc.ChromeOptions()
-options.add_argument("--user-data-dir=profile")
-options.add_argument("--start-maximized")
 cooldown = {}
 cooldown["until"] = 0
 
+def captcha_check(driver):
+    if "https://shopee.tw/verify/captcha?anti_bot_tracking_id" in driver.current_url:
+        input("Captcha detected, please solve, click enter after solve")
+        return True
+    else:
+        return False
+
+def error_check(driver):
+    if "https://shopee.tw/verify/traffic/error" in driver.current_url:
+        print("Traffic error page, restarting.")
+        driver.quit()
+        return True
+    else:
+        return False
+
 def create_profile():
+    options = uc.ChromeOptions()
+    options.add_argument("--user-data-dir=profile")
+    options.add_argument("--start-maximized")
     driver = uc.Chrome(options=options)
     driver.get("https://shopee.tw")
     time.sleep(10)
+    if captcha_check(driver):
+        print("Re-execute program.")
+        return False
     try:
         WebDriverWait(driver, 40).until(EC.presence_of_element_located((By.CSS_SELECTOR, "header.shopee-top.shopee-top--sticky")))
         driver.quit()
@@ -29,8 +47,24 @@ def create_profile():
    
 app = Flask(__name__)
 
+
 @app.route('/shopee', methods=['GET'])
-def shopee_scraper():
+def shopee_scraper(store_id=None,deal_id=None,driver_error=None):    
+    if driver_error:
+        scraper = driver_error
+    else:
+        try:
+            driver.title
+            scraper = driver
+        except:
+            options = uc.ChromeOptions()
+            options.add_argument("--user-data-dir=profile")
+            options.add_argument("--start-maximized")
+            options.set_capability(
+                "goog:loggingPrefs", {"performance": "ALL"}
+            )
+            scraper = uc.Chrome(options=options)
+    
     now = time.time()
     cooldown_until = cooldown["until"]
     print(now)
@@ -41,15 +75,17 @@ def shopee_scraper():
         return (jsonify({'error': 'Rate limit, Try again later.', 'retry_after': retry_after}),429,
             {'Retry-After': str(retry_after)}
         )
-    store_id = request.args.get('storeId')
-    deal_id = request.args.get('dealId')
+
+    if store_id is None and deal_id is None:
+        store_id = request.args.get('storeId')
+        deal_id = request.args.get('dealId')
 
     if not store_id or not deal_id:
         return jsonify({'error': 'Missing storeId or dealId'}), 400
 
     product_url = f"https://shopee.tw/滿意寶寶-日本白金-極上呵護-極上の呵護-S-60片-i.{store_id}.{deal_id}"
     network_log = []
-    driver.execute_cdp_cmd("Network.enable", {})
+    scraper.execute_cdp_cmd("Network.enable", {})
 
     request_id_to_url = {}
 
@@ -68,7 +104,7 @@ def shopee_scraper():
             request_id = event['requestId']
             url = request_id_to_url.get(request_id, "")
             if 'get_pc' in url and event['response']['status'] == 200:
-                body = driver.execute_cdp_cmd("Network.getResponseBody", {"requestId": request_id})
+                body = scraper.execute_cdp_cmd("Network.getResponseBody", {"requestId": request_id})
                 network_log.append({
                     "url": url,
                     "body": body['body']
@@ -76,19 +112,33 @@ def shopee_scraper():
         except Exception as e:
             print(f"Error capturing response: {e}")
 
-    driver.request_interceptor = None
-    driver.execute_cdp_cmd("Network.enable", {})
-    driver.execute_cdp_cmd("Network.setCacheDisabled", {"cacheDisabled": True})
+    scraper.request_interceptor = None
+    scraper.execute_cdp_cmd("Network.enable", {})
+    scraper.execute_cdp_cmd("Network.setCacheDisabled", {"cacheDisabled": True})
 
-    driver.get("https://shopee.tw")
+    scraper.get("https://shopee.tw")
     time.sleep(10)
-    WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.CSS_SELECTOR, "header.shopee-top.shopee-top--sticky")))
+
+    if captcha_check(scraper):
+        return shopee_scraper(store_id,deal_id)
+
+    if error_check(scraper):
+        options = uc.ChromeOptions()
+        options.add_argument("--user-data-dir=profile")
+        options.add_argument("--start-maximized")
+        options.set_capability(
+            "goog:loggingPrefs", {"performance": "ALL"}
+        )
+        error = uc.Chrome(options=options)
+        return shopee_scraper(store_id,deal_id, error)
+
+    WebDriverWait(scraper, 60).until(EC.presence_of_element_located((By.CSS_SELECTOR, "header.shopee-top.shopee-top--sticky")))
     print("Page loaded")
-    driver.get(product_url)
+    scraper.get(product_url)
     time.sleep(15)
 
     # Store request urls and match with response 
-    logs = driver.get_log("performance")
+    logs = scraper.get_log("performance")
     for entry in logs:
         message = json.loads(entry["message"])["message"]
         if message["method"] == "Network.requestWillBeSent":
