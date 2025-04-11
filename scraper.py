@@ -13,7 +13,7 @@ cooldown["until"] = 0
 
 def captcha_check(driver):
     if "https://shopee.tw/verify/captcha?anti_bot_tracking_id" in driver.current_url:
-        input("Captcha detected, please solve, click enter after solve")
+        input("Captcha detected, please solve, click on something random on the site after, then press enter here.")
         return True
     else:
         return False
