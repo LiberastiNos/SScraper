@@ -57,7 +57,7 @@ and a restart (reload just gives you the error page again) when the current url 
 
 then it tries to re-scrape the failed attempts (captcha or error)
 
-I tried coming up with a captcha solver, but after realizing that the slider changes its drag distance on every captcha, it's definitely not going to come anytime soon.
+I tried coming up with a captcha solver, but after realizing that the slider changes its drag trajectory on every captcha, it's definitely not going to come anytime soon.
 
 ### Can it handle high traffic?
 
